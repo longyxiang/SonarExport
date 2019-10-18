@@ -1,0 +1,7 @@
+server:
+  port: 9999
+
+analyze:
+  service: 192.168.9.195
+  port: 9988
+
