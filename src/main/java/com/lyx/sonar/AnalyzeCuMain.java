@@ -20,8 +20,8 @@ import com.lyx.util.PropertyUtil;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 
-public class AnalyzeMain {
-    private static Log log = LogFactory.getLog(AnalyzeMain.class);
+public class AnalyzeCuMain {
+    private static Log log = LogFactory.getLog(AnalyzeCuMain.class);
 
     public static void main(String[] args) throws Exception {
         String service;
@@ -79,11 +79,11 @@ public class AnalyzeMain {
             calendar.add(Calendar.DAY_OF_MONTH, -6);
             startTime = df.format(calendar.getTime());
         }
-        AnalyzeMain analyzeMain = new AnalyzeMain();
-        Map<String, Map<String, Map>> bugdateMap = analyzeMain.analyzeData(service, port);
+        AnalyzeCuMain analyzeMain = new AnalyzeCuMain();
+        Map<String, Map<String, String>> bugdateMap = analyzeMain.analyzeData(service, port);
         List<String> projectList = analyzeMain.projectNameList(service, port);
         try {
-            new WriteExcelForXSSF().write(projectList, bugdateMap, startTime, endTime);
+            new WriteExcelForXSSF().write1(projectList, bugdateMap, startTime, endTime);
             log.info("Sonar Analyze Report Export  Successful");
         } catch (ParseException e) {
             log.error("Date Format Error");
@@ -138,9 +138,9 @@ public class AnalyzeMain {
     /**
      * 拼装数据成格式为Map 包含ProjectName、date、bug数量
      */
-    private Map<String, Map<String, Map>> analyzeData(String service, String port) {
+    private Map<String, Map<String, String>> analyzeData(String service, String port) {
 
-        Map<String, Map<String, Map>> analyzeMap = new HashMap<>();
+        Map<String, Map<String, String>> analyzeMap = new HashMap<>();
         // String projectPath = "http://" + service + ":" + port + "/api/projects/search?ps=500";
         String projectPath = "http://" + service + ":" + port + "/api/components/search_projects?ps=500";
 
@@ -149,6 +149,34 @@ public class AnalyzeMain {
         log.info("projectName: " + projectName);
         JSONObject json = JSONObject.fromObject(projectName);
         JSONArray jsonArray1 = JSONArray.fromObject(json.get("components"));
+
+        String checkStyleDatas = httpGet(
+            "http://192.168.9.195:9988/api/issues/search?rules=checkstyle%3AAliMethodLength&resolved=false&facets=projectUuids&ps=1&additionalFields=_all");
+        JSONObject checkStyleData = JSONObject.fromObject(checkStyleDatas);
+        JSONArray checkComponents = JSONArray.fromObject(checkStyleData.get("components"));
+        Map<String, String> checkMap = new HashMap<>();
+        for (Object object : checkComponents) {
+            JSONObject jsonObject1 = JSONObject.fromObject(object);
+            String keyName = (String)jsonObject1.get("name");
+            String uuid = (String)jsonObject1.get("uuid");
+            checkMap.put(uuid, keyName);
+        }
+        JSONArray checkFacets = JSONArray.fromObject(checkStyleData.get("facets"));
+        for (Object object : checkFacets) {
+            JSONObject jsonObject1 = JSONObject.fromObject(object);
+            String keyName = (String)jsonObject1.get("property");
+            if (keyName.equals("projectUuids")) {
+                JSONArray values = JSONArray.fromObject(jsonObject1.get("values"));
+                for (Object valueObj : values) {
+                    JSONObject jsonValueObj = JSONObject.fromObject(valueObj);
+                    String val = (String)jsonValueObj.get("val");
+                    String count = String.valueOf(jsonValueObj.get("count"));
+                    if (checkMap.containsKey(val)) {
+                        checkMap.put(checkMap.get(val), count);
+                    }
+                }
+            }
+        }
         for (Object object : jsonArray1) {
 
             JSONObject jsonObject1 = JSONObject.fromObject(object);
@@ -157,44 +185,31 @@ public class AnalyzeMain {
             if (!isAnalyzeProject(name)) {
                 continue;
             }
-            String bugDataPath = httpGet("http://" + service + ":" + port
-                + "/api/measures/search_history?metrics=bugs%2Ccode_smells%2Cvulnerabilities%2Creliability_rating%2Csecurity_rating%2Csqale_rating&ps=1000&component="
-                + keyName);
-            // "http://" + service + ":" + port + "/api/measures/search_history?metrics=bugs&component=" + keyName);
-            // http://192.168.9.195:9988/api/measures/search_history?metrics=bugs%2Ccode_smells%2Cvulnerabilities%2Creliability_rating%2Csecurity_rating%2Csqale_rating&ps=1000&component=pmsweb
-            JSONObject jsonObject = JSONObject.fromObject(bugDataPath);
-            JSONArray jsonArray = JSONArray.fromObject(jsonObject.get("measures"));
-            Map<String, Map> dataMap = new HashMap<>();
-            Date d = new Date();
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-            String endTime = sdf.format(d);
-            for (Object obj : jsonArray) {
-                Map<String, String> bugDataMap = new HashMap<>();
+            String bugDatas = httpGet("http://192.168.9.195:9988/api/issues/search?componentKeys=" + keyName
+                + "&s=FILE_LINE&resolved=false&ps=100&facets=severities%2Ctypes&additionalFields=_all");
 
+            JSONObject bugObject = JSONObject.fromObject(bugDatas);
+
+            JSONArray bugArray = JSONArray.fromObject(bugObject.get("facets"));
+            Map<String, String> dataMap = new HashMap<>();
+            for (Object obj : bugArray) {
                 JSONObject jsonObject2 = JSONObject.fromObject(obj);
-                String metric = (String)jsonObject2.get("metric");
-                if (isMetric(metric)) {
-                    continue;
-                }
-                JSONArray jsonArray2 = JSONArray.fromObject(jsonObject2.get("history"));
-                long timeInt = 86400000L;
-                for (Object obj2 : jsonArray2) {
-                    JSONObject jsonObject3 = JSONObject.fromObject(obj2);
-                    String key = (String)jsonObject3.get("date");
-                    String value = (String)jsonObject3.get("value");
-                    Date date = str2Date(key.substring(0, 19));
-                    String time = sdf.format(date);
-                    if (endTime.equals(time) && d.getTime() - date.getTime() < timeInt) {
-                        timeInt = d.getTime() - date.getTime();
-                        bugDataMap.put(key.substring(0, 10), value);
-                    } else if (endTime.equals(time)) {
-                        // 不处理
-                    } else {
-                        bugDataMap.put(key.substring(0, 10), value);
+                String property = (String)jsonObject2.get("property");
+                if ("severities".equals(property)) {
+                    JSONArray jsonArray2 = JSONArray.fromObject(jsonObject2.get("values"));
+                    for (Object obj2 : jsonArray2) {
+                        JSONObject jsonObject3 = JSONObject.fromObject(obj2);
+                        String key = (String)jsonObject3.get("val");
+                        String value = String.valueOf(jsonObject3.get("count"));
+                        dataMap.put(key, value);
                     }
                 }
-                dataMap.put(metric, bugDataMap);
+
             }
+            if (checkMap.containsKey(name)) {
+                dataMap.put("projectUuids", checkMap.get(name));
+            }
+
             analyzeMap.put(name, dataMap);
         }
         log.info("analyzeData get Successful");
@@ -231,8 +246,14 @@ public class AnalyzeMain {
     }
 
     private boolean isAnalyzeProject(String name) {
+        if ("pmsapp".equals(name) || "pmstask".equals(name)) {
+            return false;
+        }
         return name.contains("pms") || name.contains("wms") || name.contains("tms") || "vas-service".equals(name)
-            || "export".equals(name) || "voptradeservice".equals(name);
+            || "export".equals(name) || "voptradeservice".equals(name) || "tradeorder".equals(name)
+            || "tradeidgenerator".equals(name) || "tradecrm".equals(name) || "shop-purchase-server".equals(name)
+            || "shop-sms-server".equals(name) || "scmservice".equals(name) || "addressservice".equals(name)
+            || "subjectservice".equals(name);
     }
 
     private boolean isMetric(String name) {

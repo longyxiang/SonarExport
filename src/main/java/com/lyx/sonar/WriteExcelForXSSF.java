@@ -88,7 +88,7 @@ public class WriteExcelForXSSF {
                     Date dd = df.parse(endTime);
                     Calendar calendar = Calendar.getInstance();
                     calendar.setTime(dd);
-                    calendar.add(Calendar.DAY_OF_MONTH, -k);
+                    calendar.add(Calendar.DAY_OF_MONTH, 2 - k);
                     String dateTime = df.format(calendar.getTime());
                     Map<String, String> bugMap = entry.getValue();
                     if ((bugMap.get(dateTime) != null) && (bugMap.get(dateTime) != "")) {
@@ -108,6 +108,93 @@ public class WriteExcelForXSSF {
             daytime = String.valueOf(cal.get(Calendar.DATE));
             date = year + "-" + month + "-" + daytime;
             File file = new File("AnalyzeReport_" + date + ".xlsx");
+            log.info("Report Path:" + file.getPath());
+            FileOutputStream fileoutputStream = new FileOutputStream(file);
+            workbook.write(fileoutputStream);
+            fileoutputStream.close();
+        } catch (IOException e) {
+            log.error("Export Report Error");
+        }
+    }
+
+    public void write1(List<String> projectList, Map<String, Map<String, String>> dataMap, String startTime,
+        String endTime) throws ParseException {
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("0");
+        Row row = sheet.createRow(0);
+        sheet.setColumnWidth(0, 40 * 256);
+        CellStyle cellStyle = workbook.createCellStyle();
+        cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        cellStyle.setAlignment(HorizontalAlignment.CENTER);// 水平居中
+        workbook.setSheetName(0, "AnalyzeReport");
+        row.createCell(0).setCellStyle(cellStyle);
+        row.createCell(0).setCellValue("ProjectName");
+        row.createCell(1).setCellStyle(cellStyle);
+        row.createCell(1).setCellValue("Total");
+        row.createCell(2).setCellStyle(cellStyle);
+        row.createCell(2).setCellValue("阻断");
+        row.createCell(3).setCellStyle(cellStyle);
+        row.createCell(3).setCellValue("严重");
+        row.createCell(4).setCellStyle(cellStyle);
+        row.createCell(4).setCellValue("主要");
+        row.createCell(5).setCellStyle(cellStyle);
+        row.createCell(5).setCellValue("次要");
+        row.createCell(6).setCellStyle(cellStyle);
+        row.createCell(6).setCellValue("提示");
+        row.createCell(7).setCellStyle(cellStyle);
+        row.createCell(7).setCellValue("超过80行方法体个数");
+        Set<Map.Entry<String, Map<String, String>>> entrySet = dataMap.entrySet();
+        int j = 0;
+        for (Map.Entry<String, Map<String, String>> en : entrySet) {
+            Row rowNum = sheet.createRow(j + 1);
+            String name = en.getKey();
+            rowNum.createCell(0).setCellValue(name);
+            Map<String, String> dataTypeMap = en.getValue();
+            Set<Map.Entry<String, String>> entries = dataTypeMap.entrySet();
+            boolean isFlag = false;
+            for (Map.Entry<String, String> entry : entries) {
+                if ("BLOCKER".equals(entry.getKey())) {
+                    // 阻断
+                    rowNum.createCell(2).setCellStyle(cellStyle);
+                    rowNum.createCell(2).setCellValue(entry.getValue());
+                } else if ("CRITICAL".equals(entry.getKey())) {
+                    // 严重
+                    rowNum.createCell(3).setCellStyle(cellStyle);
+                    rowNum.createCell(3).setCellValue(entry.getValue());
+                } else if ("MAJOR".equals(entry.getKey())) {
+                    // 主要
+                    rowNum.createCell(4).setCellStyle(cellStyle);
+                    rowNum.createCell(4).setCellValue(entry.getValue());
+                } else if ("MINOR".equals(entry.getKey())) {
+                    // 次要
+                    rowNum.createCell(5).setCellStyle(cellStyle);
+                    rowNum.createCell(5).setCellValue(entry.getValue());
+                } else if ("INFO".equals(entry.getKey())) {
+                    // 提示
+                    rowNum.createCell(6).setCellStyle(cellStyle);
+                    rowNum.createCell(6).setCellValue(entry.getValue());
+                } else if ("projectUuids".equals(entry.getKey())) {
+                    // 超过80行方法体个数
+                    rowNum.createCell(7).setCellStyle(cellStyle);
+                    rowNum.createCell(7).setCellValue(entry.getValue());
+                    isFlag = true;
+                }
+            }
+            if (!isFlag) {
+                rowNum.createCell(7).setCellStyle(cellStyle);
+                rowNum.createCell(7).setCellValue("0");
+            }
+            j++;
+        }
+
+        try {
+            Calendar cal = Calendar.getInstance();
+            String date, daytime, month, year;
+            year = String.valueOf(cal.get(Calendar.YEAR));
+            month = String.valueOf(cal.get(Calendar.MONTH) + 1);
+            daytime = String.valueOf(cal.get(Calendar.DATE));
+            date = year + "-" + month + "-" + daytime;
+            File file = new File("AnalyzeReport_bug_" + date + ".xlsx");
             log.info("Report Path:" + file.getPath());
             FileOutputStream fileoutputStream = new FileOutputStream(file);
             workbook.write(fileoutputStream);
